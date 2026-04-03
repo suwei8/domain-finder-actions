@@ -42,6 +42,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--tld", default="com", help="Top-level domain without a leading dot.")
     parser.add_argument(
+        "--exclude-digits",
+        default="3,4",
+        help="Digits to exclude from the numeric suffix, for example '3,4' or '34'.",
+    )
+    parser.add_argument(
         "--delay-ms",
         type=int,
         default=350,
@@ -144,11 +149,11 @@ def ensure_results_dir(path_str: str) -> Path:
     return path
 
 
-def generate_domains(prefix: str, digits: int, start: int, end: int, tld: str):
-    width = max(digits, 1)
-    for value in range(start, end + 1):
-        suffix = f"{value:0{width}d}"
-        yield f"{prefix}{suffix}.{tld}"
+def parse_excluded_digits(value: str) -> str:
+    normalized = "".join(ch for ch in value if ch.isdigit())
+    if len(set(normalized)) != len(normalized):
+        normalized = "".join(dict.fromkeys(normalized))
+    return normalized
 
 
 def write_outputs(
@@ -181,6 +186,8 @@ def write_outputs(
         f"- Digits: `{params['digits']}`",
         f"- Range: `{params['start']}` to `{params['end']}`",
         f"- TLD: `.{params['tld']}`",
+        f"- Excluded digits: `{params['exclude_digits'] or '(none)'}`",
+        f"- Filtered out before lookup: `{stats['skipped_filtered']}`",
         f"- Checked: `{stats['checked']}`",
         f"- Available: `{stats['available']}`",
         f"- Taken: `{stats['taken']}`",
@@ -211,6 +218,7 @@ def main() -> int:
     args = build_parser().parse_args()
     tld = args.tld.lower().lstrip(".")
     end = args.end if args.end is not None else (10**args.digits) - 1
+    excluded_digits = parse_excluded_digits(args.exclude_digits)
 
     if args.digits < 1:
         print("--digits must be >= 1", file=sys.stderr)
@@ -231,19 +239,26 @@ def main() -> int:
         "start": args.start,
         "end": end,
         "tld": tld,
+        "exclude_digits": excluded_digits,
         "delay_ms": args.delay_ms,
         "stop_after_hits": args.stop_after_hits,
         "rdap_base": rdap_base,
     }
 
-    stats = {"checked": 0, "available": 0, "taken": 0, "unclear": 0}
+    stats = {"checked": 0, "available": 0, "taken": 0, "unclear": 0, "skipped_filtered": 0}
     available_domains: List[str] = []
     sample_errors: List[dict] = []
     total_candidates = (end - args.start) + 1
 
     print(json.dumps({"event": "start", "params": params, "total_candidates": total_candidates}, ensure_ascii=False))
 
-    for domain in generate_domains(args.prefix, args.digits, args.start, end, tld):
+    for value in range(args.start, end + 1):
+        suffix = f"{value:0{max(args.digits, 1)}d}"
+        if excluded_digits and any(ch in excluded_digits for ch in suffix):
+            stats["skipped_filtered"] += 1
+            continue
+
+        domain = f"{args.prefix}{suffix}.{tld}"
         status, detail = classify_domain(domain, rdap_base, args.timeout)
         stats["checked"] += 1
         stats[status] += 1

@@ -17,6 +17,7 @@ GitHub Actions project for searching available domains with a fixed prefix plus 
 - `start`: start of the numeric range.
 - `end`: end of the numeric range. Leave blank to use the max for the digit width.
 - `tld`: top-level domain such as `com`, `net`, or `org`.
+- `exclude_digits`: digits to skip in the numeric suffix. Default is `3,4`.
 - `delay_ms`: delay between checks in milliseconds.
 - `stop_after_hits`: stop early after this many available domains are found. Use `0` to disable.
 
@@ -29,6 +30,7 @@ If you run with:
 - `start=0`
 - `end=99`
 - `tld=com`
+- `exclude_digits=3,4`
 
 The workflow checks:
 
@@ -36,6 +38,8 @@ The workflow checks:
 - `abc001.com`
 - ...
 - `abc099.com`
+
+But it skips values whose numeric suffix contains `3` or `4`, such as `abc003.com` and `abc014.com`.
 
 ## Secrets
 
@@ -47,5 +51,5 @@ Set these repo secrets so Telegram delivery works:
 ## Local run
 
 ```bash
-python3 scripts/domain_hunt.py --prefix abc --digits 3 --start 0 --end 20 --tld com
+python3 scripts/domain_hunt.py --prefix abc --digits 3 --start 0 --end 20 --tld com --exclude-digits 3,4
 ```

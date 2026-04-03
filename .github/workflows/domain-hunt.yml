@@ -23,6 +23,10 @@ on:
         description: "顶级域名，例如 com / net / org"
         required: true
         default: "com"
+      exclude_digits:
+        description: "排除的数字，默认 3,4；例如 3,4 或 34"
+        required: false
+        default: "3,4"
       delay_ms:
         description: "每次查询间隔毫秒数"
         required: true
@@ -54,6 +58,7 @@ jobs:
           INPUT_START: ${{ github.event.inputs.start }}
           INPUT_END: ${{ github.event.inputs.end }}
           INPUT_TLD: ${{ github.event.inputs.tld }}
+          INPUT_EXCLUDE_DIGITS: ${{ github.event.inputs.exclude_digits }}
           INPUT_DELAY_MS: ${{ github.event.inputs.delay_ms }}
           INPUT_STOP_AFTER_HITS: ${{ github.event.inputs.stop_after_hits }}
         run: |
@@ -63,6 +68,7 @@ jobs:
             --digits "${INPUT_DIGITS}"
             --start "${INPUT_START}"
             --tld "${INPUT_TLD}"
+            --exclude-digits "${INPUT_EXCLUDE_DIGITS}"
             --delay-ms "${INPUT_DELAY_MS}"
             --stop-after-hits "${INPUT_STOP_AFTER_HITS}"
             --results-dir results
