@@ -4,7 +4,7 @@ import json
 import mimetypes
 import uuid
 from pathlib import Path
-from urllib import parse, request
+from urllib import error, parse, request
 
 
 def post_multipart(url: str, fields: dict, file_field: str = "", file_path: Path = None):
@@ -75,9 +75,13 @@ def main():
     text = summary_text[:4000]
     send_text(args.bot_token, args.chat_id, text)
 
-    if document_path.exists():
+    if document_path.exists() and document_path.stat().st_size > 0:
         send_document(args.bot_token, args.chat_id, document_path, caption="available_domains.txt")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise SystemExit(f"Telegram API error {exc.code}: {body}")
