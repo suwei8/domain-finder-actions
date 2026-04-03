@@ -1,0 +1,92 @@
+name: Domain Hunt
+
+on:
+  workflow_dispatch:
+    inputs:
+      prefix:
+        description: "域名前缀，例如 abc"
+        required: false
+        default: ""
+      digits:
+        description: "数字后缀位数，例如 5 表示 00000-99999"
+        required: true
+        default: "5"
+      start:
+        description: "起始数字"
+        required: true
+        default: "0"
+      end:
+        description: "结束数字，留空则自动到该位数的最大值"
+        required: false
+        default: ""
+      tld:
+        description: "顶级域名，例如 com / net / org"
+        required: true
+        default: "com"
+      delay_ms:
+        description: "每次查询间隔毫秒数"
+        required: true
+        default: "350"
+      stop_after_hits:
+        description: "找到多少个可用域名后提前停止，0 表示不提前停止"
+        required: true
+        default: "50"
+
+jobs:
+  hunt:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run domain hunt
+        env:
+          INPUT_PREFIX: ${{ github.event.inputs.prefix }}
+          INPUT_DIGITS: ${{ github.event.inputs.digits }}
+          INPUT_START: ${{ github.event.inputs.start }}
+          INPUT_END: ${{ github.event.inputs.end }}
+          INPUT_TLD: ${{ github.event.inputs.tld }}
+          INPUT_DELAY_MS: ${{ github.event.inputs.delay_ms }}
+          INPUT_STOP_AFTER_HITS: ${{ github.event.inputs.stop_after_hits }}
+        run: |
+          mkdir -p results
+          args=(
+            --prefix "${INPUT_PREFIX}"
+            --digits "${INPUT_DIGITS}"
+            --start "${INPUT_START}"
+            --tld "${INPUT_TLD}"
+            --delay-ms "${INPUT_DELAY_MS}"
+            --stop-after-hits "${INPUT_STOP_AFTER_HITS}"
+            --results-dir results
+          )
+          if [ -n "${INPUT_END}" ]; then
+            args+=(--end "${INPUT_END}")
+          fi
+          python scripts/domain_hunt.py "${args[@]}"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: domain-hunt-results
+          path: results/
+
+      - name: Send Telegram summary
+        if: always() && secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != ''
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python scripts/send_telegram.py \
+            --bot-token "${TELEGRAM_BOT_TOKEN}" \
+            --chat-id "${TELEGRAM_CHAT_ID}" \
+            --summary-file results/summary.md \
+            --document-file results/available_domains.txt
