@@ -80,11 +80,15 @@ jobs:
           path: results/
 
       - name: Send Telegram summary
-        if: always() && secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != ''
+        if: always()
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
+          if [ -z "${TELEGRAM_BOT_TOKEN}" ] || [ -z "${TELEGRAM_CHAT_ID}" ]; then
+            echo "Telegram secrets are not configured; skipping notification."
+            exit 0
+          fi
           python scripts/send_telegram.py \
             --bot-token "${TELEGRAM_BOT_TOKEN}" \
             --chat-id "${TELEGRAM_CHAT_ID}" \
