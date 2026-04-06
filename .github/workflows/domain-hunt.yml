@@ -8,9 +8,13 @@ on:
         required: false
         default: ""
       suffix_mode:
-        description: "后缀模式：numeric 或 alpha"
+        description: "后缀模式"
         required: true
-        default: "numeric"
+        type: choice
+        default: "数字"
+        options:
+          - 数字
+          - 字母
       suffix_length:
         description: "后缀长度；numeric 时是位数，alpha 时是字母数"
         required: true

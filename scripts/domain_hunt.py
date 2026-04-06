@@ -25,9 +25,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prefix", default="", help="Fixed prefix before the generated suffix.")
     parser.add_argument(
         "--suffix-mode",
-        choices=["numeric", "alpha"],
         default="numeric",
-        help="Suffix generation mode: zero-padded digits or lowercase letters.",
+        help="Suffix generation mode: numeric/alpha or their Chinese aliases.",
     )
     parser.add_argument(
         "--suffix-length",
@@ -80,6 +79,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="HTTP timeout in seconds.",
     )
     return parser
+
+
+def normalize_suffix_mode(value: str) -> str:
+    normalized = (value or "").strip().lower()
+    if normalized in {"numeric", "number", "数字"}:
+        return "numeric"
+    if normalized in {"alpha", "letter", "letters", "字母"}:
+        return "alpha"
+    raise ValueError(f"unsupported suffix mode: {value}")
 
 
 def http_get_json(url: str, timeout: float) -> Tuple[int, Optional[dict], Optional[str]]:
@@ -255,7 +263,11 @@ def write_outputs(
 
 def main() -> int:
     args = build_parser().parse_args()
-    suffix_mode = args.suffix_mode
+    try:
+        suffix_mode = normalize_suffix_mode(args.suffix_mode)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     suffix_length = resolve_suffix_length(args)
     tld = args.tld.lower().lstrip(".")
     end = args.end if args.end is not None else suffix_space_size(suffix_mode, suffix_length) - 1

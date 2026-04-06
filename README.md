@@ -13,7 +13,7 @@ GitHub Actions project for searching available domains with a fixed prefix plus 
 ## Workflow inputs
 
 - `prefix`: fixed string before the numeric suffix.
-- `suffix_mode`: `numeric` or `alpha`.
+- `suffix_mode`: Actions 面板里是中文下拉选项，`数字` 或 `字母`。命令行仍可用 `numeric` 或 `alpha`。
 - `suffix_length`: width of the generated suffix.
 - `start`: start index of the generated suffix range.
 - `end`: end index of the generated suffix range. Leave blank to use the max for the selected mode and length.
