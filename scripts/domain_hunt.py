@@ -5,7 +5,7 @@ import ssl
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 from urllib import error, parse, request
 
 
@@ -20,31 +20,41 @@ COMMON_RDAP = {
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Search for available domains using prefix + zero-padded numeric suffix."
+        description="Search for available domains using a fixed prefix and a generated suffix."
     )
-    parser.add_argument("--prefix", default="", help="Fixed prefix before the numeric suffix.")
+    parser.add_argument("--prefix", default="", help="Fixed prefix before the generated suffix.")
+    parser.add_argument(
+        "--suffix-mode",
+        choices=["numeric", "alpha"],
+        default="numeric",
+        help="Suffix generation mode: zero-padded digits or lowercase letters.",
+    )
+    parser.add_argument(
+        "--suffix-length",
+        type=int,
+        help="Width of the generated suffix. Example: 5 -> 00000 or aaaaa.",
+    )
     parser.add_argument(
         "--digits",
         type=int,
-        default=5,
-        help="Width of the numeric suffix. Example: 3 -> 000..999",
+        help="Deprecated alias for --suffix-length in numeric mode.",
     )
     parser.add_argument(
         "--start",
         type=int,
         default=0,
-        help="Starting numeric value for the suffix range.",
+        help="Starting index for the suffix range.",
     )
     parser.add_argument(
         "--end",
         type=int,
-        help="Ending numeric value for the suffix range. Defaults to the max for the digit width.",
+        help="Ending index for the suffix range. Defaults to the max for the selected suffix mode and length.",
     )
     parser.add_argument("--tld", default="com", help="Top-level domain without a leading dot.")
     parser.add_argument(
         "--exclude-digits",
         default="3,4",
-        help="Digits to exclude from the numeric suffix, for example '3,4' or '34'.",
+        help="Digits to exclude in numeric mode, for example '3,4' or '34'. Ignored in alpha mode.",
     )
     parser.add_argument(
         "--delay-ms",
@@ -156,6 +166,34 @@ def parse_excluded_digits(value: str) -> str:
     return normalized
 
 
+def resolve_suffix_length(args: argparse.Namespace) -> int:
+    if args.suffix_length is not None:
+        return args.suffix_length
+    if args.digits is not None:
+        return args.digits
+    return 5
+
+
+def suffix_space_size(mode: str, length: int) -> int:
+    base = 10 if mode == "numeric" else 26
+    return base**length
+
+
+def index_to_alpha(value: int, length: int) -> str:
+    alphabet = "abcdefghijklmnopqrstuvwxyz"
+    chars = ["a"] * length
+    for idx in range(length - 1, -1, -1):
+        value, remainder = divmod(value, 26)
+        chars[idx] = alphabet[remainder]
+    return "".join(chars)
+
+
+def build_suffix(value: int, mode: str, length: int) -> str:
+    if mode == "numeric":
+        return f"{value:0{length}d}"
+    return index_to_alpha(value, length)
+
+
 def write_outputs(
     results_dir: Path,
     params: dict,
@@ -183,10 +221,11 @@ def write_outputs(
         "# Domain Hunt Summary",
         "",
         f"- Prefix: `{params['prefix']}`",
-        f"- Digits: `{params['digits']}`",
+        f"- Suffix mode: `{params['suffix_mode']}`",
+        f"- Suffix length: `{params['suffix_length']}`",
         f"- Range: `{params['start']}` to `{params['end']}`",
         f"- TLD: `.{params['tld']}`",
-        f"- Excluded digits: `{params['exclude_digits'] or '(none)'}`",
+        f"- Excluded digits: `{params['exclude_digits'] or '(n/a in alpha mode)'}`",
         f"- Filtered out before lookup: `{stats['skipped_filtered']}`",
         f"- Checked: `{stats['checked']}`",
         f"- Available: `{stats['available']}`",
@@ -216,15 +255,20 @@ def write_outputs(
 
 def main() -> int:
     args = build_parser().parse_args()
+    suffix_mode = args.suffix_mode
+    suffix_length = resolve_suffix_length(args)
     tld = args.tld.lower().lstrip(".")
-    end = args.end if args.end is not None else (10**args.digits) - 1
+    end = args.end if args.end is not None else suffix_space_size(suffix_mode, suffix_length) - 1
     excluded_digits = parse_excluded_digits(args.exclude_digits)
 
-    if args.digits < 1:
-        print("--digits must be >= 1", file=sys.stderr)
+    if suffix_length < 1:
+        print("suffix length must be >= 1", file=sys.stderr)
         return 2
     if args.start < 0 or end < 0 or end < args.start:
         print("invalid start/end range", file=sys.stderr)
+        return 2
+    if end >= suffix_space_size(suffix_mode, suffix_length):
+        print("end is outside the suffix space for the selected mode/length", file=sys.stderr)
         return 2
 
     rdap_base = discover_rdap_base(tld, args.timeout)
@@ -235,11 +279,12 @@ def main() -> int:
     results_dir = ensure_results_dir(args.results_dir)
     params = {
         "prefix": args.prefix,
-        "digits": args.digits,
+        "suffix_mode": suffix_mode,
+        "suffix_length": suffix_length,
         "start": args.start,
         "end": end,
         "tld": tld,
-        "exclude_digits": excluded_digits,
+        "exclude_digits": excluded_digits if suffix_mode == "numeric" else "",
         "delay_ms": args.delay_ms,
         "stop_after_hits": args.stop_after_hits,
         "rdap_base": rdap_base,
@@ -253,8 +298,8 @@ def main() -> int:
     print(json.dumps({"event": "start", "params": params, "total_candidates": total_candidates}, ensure_ascii=False))
 
     for value in range(args.start, end + 1):
-        suffix = f"{value:0{max(args.digits, 1)}d}"
-        if excluded_digits and any(ch in excluded_digits for ch in suffix):
+        suffix = build_suffix(value, suffix_mode, suffix_length)
+        if suffix_mode == "numeric" and excluded_digits and any(ch in excluded_digits for ch in suffix):
             stats["skipped_filtered"] += 1
             continue
 
